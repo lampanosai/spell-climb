@@ -1,0 +1,37 @@
+{
+  "name": "Spell Climb",
+  "short_name": "Spell Climb",
+  "description": "Listen to a word and spell it. Thousands of words from easy to hard.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EEF3FF",
+  "theme_color": "#1B2559",
+  "categories": [
+    "education",
+    "games",
+    "kids"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

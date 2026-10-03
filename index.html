@@ -74,6 +74,22 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 .heart.off{color:var(--edge)}
 .dots .gap{width:12px}
 .snd-row{display:flex;justify-content:center;margin:-12px 0 20px}
+.streak{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center;background:var(--panel);
+  border-radius:16px;padding:14px 16px;box-shadow:0 4px 0 var(--edge);margin-bottom:16px}
+.flame{grid-row:span 2;font-family:"Fredoka",sans-serif;font-weight:700;font-size:1.9rem;line-height:1;
+  display:flex;align-items:center;gap:4px;min-width:3.2rem}
+.flame.cold{filter:grayscale(1);opacity:.55}
+.streak-text{font-weight:700;line-height:1.3}
+.streak-text small{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
+.week{grid-column:1 / -1;display:flex;justify-content:space-between;gap:6px;margin-top:8px}
+.day{flex:1;display:grid;justify-items:center;gap:3px;font-size:.75rem;color:var(--muted)}
+.day i{width:100%;max-width:2rem;aspect-ratio:1;border-radius:8px;background:var(--bg);display:grid;place-items:center;font-style:normal;font-size:.95rem}
+.day.on i{background:var(--sun)}
+.day.today i{outline:2px solid var(--ink);outline-offset:1px}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);font-weight:700;padding:10px 18px;border-radius:999px;
+  box-shadow:0 4px 0 rgba(0,0,0,.25);z-index:10;max-width:calc(100% - 32px);text-align:center;animation:toast 3.2s ease both}
+@keyframes toast{0%{opacity:0;transform:translate(-50%,-12px)}10%,85%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-12px)}}
 .snd{border:2px solid var(--edge);background:transparent;border-radius:999px;padding:6px 14px;font-weight:700;font-size:.9rem;color:var(--muted);white-space:nowrap}
 .snd.icon{padding:4px 8px;font-size:1.05rem;border-width:0}
 .reset{display:block;margin:28px auto 0;background:none;border:0;color:var(--muted);text-decoration:underline;font-size:.9rem}
@@ -149,6 +165,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <main class="wrap">
   <section id="home">
     <h1 class="title" aria-label="Spell Climb">
@@ -157,6 +174,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
     </h1>
     <p class="intro">Listen to a word, then spell it with the letter tiles. Every round brings new words, and words you miss come back for practice. Try Endless climb to see how high you can go.</p>
     <div class="snd-row"><button class="snd" id="sndHome" type="button" aria-pressed="true"></button></div>
+    <div class="streak" id="streak" role="img"></div>
     <ol class="levels" id="levels"></ol>
     <button class="reset" id="resetBtn" type="button">Reset progress</button>
   </section>
@@ -219,7 +237,7 @@ const KEY = "spellclimb-v2";
 const $ = s => document.querySelector(s);
 
 /* ---------- Progress ---------- */
-function freshStore(){ return { unlocked:1, stars:[0,0,0,0,0], seen:[[],[],[],[],[]], missed:[[],[],[],[],[]], endlessBest:{ level:0, score:0 }, sfx:true }; }
+function freshStore(){ return { unlocked:1, stars:[0,0,0,0,0], seen:[[],[],[],[],[]], missed:[[],[],[],[],[]], endlessBest:{ level:0, score:0 }, sfx:true, streak:{ count:0, best:0, last:"", days:[] } }; }
 let store = freshStore();
 function load(){
   try{
@@ -289,6 +307,7 @@ const SFX = {
   loseLife: () => notes([[392,0,.22],[330,.15,.22],[262,.3,.4]], { type:"triangle", vol:0.13 }),
   win:      () => notes([[523,0,.15],[659,.12,.15],[784,.24,.15],[1047,.36,.3],[784,.56,.14],[1047,.68,.6]], { type:"triangle", vol:0.14 }),
   roundEnd: () => notes([[523,0,.25],[659,.15,.4]], { vol:0.12 }),
+  streak:   () => { tone(330, 0, 0.35, { type:"triangle", vol:0.1, slideTo:880 }); notes([[1047,.3,.2],[1319,.4,.2],[1568,.5,.5]], { vol:0.12 }); },
   gameOver: () => notes([[392,0,.3],[349,.22,.3],[330,.44,.3],[262,.66,.7]], { type:"triangle", vol:0.12 }),
 };
 function sfx(name){
@@ -321,7 +340,61 @@ function byWord(li){
 }
 
 /* ---------- Home ---------- */
+/* ---------- Daily streak ---------- */
+// A day counts once the student spells at least one word right that day.
+function dayKey(offset = 0){
+  const d = new Date(); d.setDate(d.getDate() + offset);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function currentStreak(){
+  const st = store.streak;
+  return (st.last === dayKey(0) || st.last === dayKey(-1)) ? st.count : 0;
+}
+function markPlayedToday(){
+  const st = store.streak, today = dayKey(0);
+  if (st.last === today) return;
+  st.count = st.last === dayKey(-1) ? st.count + 1 : 1;
+  st.last = today;
+  st.best = Math.max(st.best, st.count);
+  st.days = [...st.days.filter(d => d !== today), today].slice(-60);
+  save();
+  setTimeout(() => {
+    showToast(st.count === 1 ? "🔥 Streak started! Play again tomorrow to keep it going."
+                             : `🔥 ${st.count}-day streak!` + (st.count === st.best && st.count > 1 ? " Your best yet!" : ""));
+    sfx("streak");
+  }, 700);
+}
+let toastTimer = null;
+function showToast(text){
+  const t = $("#toast");
+  t.hidden = true; void t.offsetWidth;
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3300);
+}
+function renderStreak(){
+  const st = store.streak, n = currentStreak(), today = dayKey(0);
+  let line, sub;
+  if (n === 0){ line = "Start a streak today"; sub = "Spell one word right each day to build your streak."; }
+  else if (st.last === today){ line = `${n}-day streak!`; sub = "You've played today. Come back tomorrow!"; }
+  else { line = `${n}-day streak`; sub = "Play today to keep it going!"; }
+  if (st.best > 1) sub += ` Best: ${st.best} days.`;
+  let week = "";
+  for (let i = -6; i <= 0; i++){
+    const d = new Date(); d.setDate(d.getDate() + i);
+    const key = dayKey(i), on = st.days.includes(key);
+    const name = d.toLocaleDateString(undefined, { weekday:"narrow" });
+    week += `<span class="day${on ? " on" : ""}${i === 0 ? " today" : ""}"><i>${on ? "🔥" : ""}</i>${name}</span>`;
+  }
+  const box = $("#streak");
+  box.innerHTML = `<span class="flame${n ? "" : " cold"}" aria-hidden="true">🔥${n}</span>
+    <span class="streak-text">${line}<small>${sub}</small></span>
+    <div class="week" aria-hidden="true">${week}</div>`;
+  box.setAttribute("aria-label", `${line}. ${sub}`);
+}
+
 function renderHome(){
+  renderStreak();
   const ol = $("#levels"); ol.innerHTML = "";
   LEVEL_INFO.forEach(([name, blurb], i) => {
     const count = (BANK[i] || []).length;
@@ -485,6 +558,7 @@ function hint(){
 function shake(){ const t=$("#tiles"); t.classList.remove("shake"); void t.offsetWidth; t.classList.add("shake"); }
 function recordResult(ok){
   g.results.push({ word:g.word, ok, typed:g.typed });
+  if (ok) markPlayedToday();
   if (g.mode === "endless"){
     if (ok){
       g.inLevel++;
